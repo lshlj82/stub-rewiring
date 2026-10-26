@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cutting a Tree into Stubs</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🕸️</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=STIX+Two+Text:ital,wght@0,400;0,600;1,400&family=Public+Sans:wght@400;600&family=Noto+Serif+KR:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #eef1f4;
+    --ink: #18233a;
+    --muted: #55607a;
+    --rule: #c9d0db;
+    --node: #2f5bd3;
+    --edge: #7d889e;
+    --hi: #d99a00;
+    --accent: #b5770f;
+    --k3: #df9a2e;      /* degree 3: orange, as in the slide */
+    --k1: #3d4770;      /* degree 1: navy, as in the slide */
+    --g0: #c4452f; --g2: #e3c84a; --g3: #ece5b2; --g5: #4f9a7c;
+    --stroke: rgba(24, 35, 58, .55);
+    --serif: "STIX Two Text", "Noto Serif KR", "Cambria", "Times New Roman", serif;
+    --sans: "Public Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #141c2b; --ink: #e4e9f2; --muted: #9aa5bb; --rule: #2e3a52;
+      --node: #6f93f2; --edge: #6d7b98; --hi: #f5d24e; --accent: #e3a43a;
+      --k3: #eba947; --k1: #8d9bd0; --stroke: rgba(10, 14, 24, .8);
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #141c2b; --ink: #e4e9f2; --muted: #9aa5bb; --rule: #2e3a52;
+    --node: #6f93f2; --edge: #6d7b98; --hi: #f5d24e; --accent: #e3a43a;
+    --k3: #eba947; --k1: #8d9bd0; --stroke: rgba(10, 14, 24, .8);
+  }
+  *, *::before, *::after { box-sizing: inherit; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font-family: var(--serif); font-size: 1.125rem; line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: inherit; text-underline-offset: 3px; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  .wrap { max-width: 68rem; margin: 0 auto; padding: 0 max(1.5rem, env(safe-area-inset-right, 0px)) 0 max(1.5rem, env(safe-area-inset-left, 0px)); }
+  .ko { color: var(--muted); word-break: keep-all; }
+  .back { display: inline-block; margin-top: 1.5rem; font-family: var(--sans); font-size: 0.9rem; color: var(--muted); text-decoration: none; }
+  .back:hover { color: var(--ink); text-decoration: underline; }
+
+  .hero { padding: 2rem 0 1.5rem; }
+  .hero h1 { font-weight: 600; font-size: clamp(2rem, 4.6vw, 3.1rem); line-height: 1.15; letter-spacing: -0.015em; margin: 0 0 0.4rem; text-wrap: balance; }
+  .hero h1 .ko { display: block; font-size: 0.55em; font-weight: 400; margin-top: 0.35rem; letter-spacing: 0; }
+  .hero p { margin: 0.9rem 0 0; max-width: 44rem; color: var(--muted); font-size: 1.15rem; }
+  .credit { font-family: var(--sans); font-size: 0.92rem !important; }
+  .credit span { display: block; }
+
+  /* figure */
+  .stage { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); gap: 1.75rem; margin-top: 1.25rem; }
+  #net { display: block; width: 100%; aspect-ratio: 3 / 2; touch-action: manipulation; }
+  .side { font-family: var(--sans); font-size: 0.86rem; min-width: 0; }
+  #deg { display: block; width: 100%; aspect-ratio: 1 / 0.9; }
+  .side h3 { font-family: var(--serif); font-weight: 600; font-size: 1.05rem; margin: 0 0 0.25rem; }
+  .side h3 + .ko { display: block; font-size: 0.85rem; margin-bottom: 0.4rem; }
+  table { border-collapse: collapse; width: 100%; margin-top: 1.1rem; font-variant-numeric: tabular-nums; }
+  th, td { padding: 0.28rem 0.2rem; text-align: right; border-bottom: 1px solid var(--rule); }
+  th:first-child, td:first-child { text-align: left; color: var(--muted); font-weight: 400; }
+  thead th { font-weight: 600; border-bottom: 1px solid var(--ink); }
+  td.now { font-weight: 600; }
+  td .ko { display: block; font-size: 0.78rem; }
+
+  .steps { list-style: none; padding: 0; margin: 1.1rem 0 0; display: flex; flex-wrap: wrap; gap: 0.4rem; font-family: var(--sans); font-size: 0.85rem; counter-reset: st; }
+  .steps button {
+    font: inherit; color: var(--muted); background: transparent; cursor: pointer;
+    border: 1px solid var(--rule); border-radius: 999px; padding: 0.25rem 0.75rem 0.25rem 0.35rem;
+    display: inline-flex; align-items: center; gap: 0.45rem;
+  }
+  .steps button .n { display: inline-grid; place-items: center; width: 1.35rem; height: 1.35rem; border-radius: 50%; border: 1px solid var(--rule); font-size: 0.75rem; }
+  .steps button .ko { color: inherit; opacity: .8; }
+  .steps button.done { color: var(--ink); }
+  .steps button.done .n { border-color: var(--accent); color: var(--accent); }
+  .steps button[aria-current="step"] { color: var(--ink); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+  .steps button[aria-current="step"] .n { background: var(--accent); border-color: var(--accent); color: var(--paper); font-weight: 600; }
+
+  .caption { margin: 0.8rem 0 0; min-height: 6.4em; max-width: 50rem; font-size: 1.02rem; }
+  .caption .ko { display: block; font-size: 0.92rem; margin-top: 0.25rem; }
+
+  .controls { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-top: 1rem; font-family: var(--sans); font-size: 0.9rem; }
+  .controls button {
+    font: inherit; color: var(--ink); background: transparent; border: 1px solid var(--rule);
+    border-radius: 3px; padding: 0.3rem 0.8rem; cursor: pointer;
+  }
+  .controls button:hover { border-color: var(--ink); }
+  .controls button.primary { background: var(--node); border-color: var(--node); color: var(--paper); font-weight: 600; }
+  .seg { display: inline-flex; border: 1px solid var(--rule); border-radius: 3px; overflow: hidden; margin-left: auto; }
+  .seg span { padding: 0.3rem 0.6rem; color: var(--muted); }
+  .controls .seg button { border: 0; border-left: 1px solid var(--rule); border-radius: 0; }
+  .controls .seg button[aria-pressed="true"] { background: var(--ink); color: var(--paper); font-weight: 600; }
+
+  /* text */
+  .part { padding: 2rem 0 0.5rem; border-top: 1px solid var(--rule); margin-top: 2.5rem; }
+  .part h2 { font-weight: 400; font-style: italic; font-size: 1.5rem; margin: 0 0 0.75rem; color: var(--muted); }
+  .slide { margin: 0.25rem 0 1.75rem; }
+  .slide img { display: block; width: 100%; max-width: 100%; height: auto; border: 1px solid var(--rule); border-radius: 4px; }
+  .slide figcaption { font-family: var(--sans); font-size: 0.85rem; color: var(--muted); margin-top: 0.5rem; }
+  .slide figcaption span { display: block; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 2.5rem; }
+  .cols > div { min-width: 0; }
+  .part p { margin: 0 0 0.9rem; max-width: 40rem; }
+  .part p.ko { font-size: 1rem; }
+  .eq { font-size: 1.15rem; overflow-x: auto; white-space: nowrap; margin: 0.4rem 0 1rem; padding: 0.6rem 0.9rem; border-left: 3px solid var(--accent); background: color-mix(in srgb, var(--accent) 7%, transparent); }
+  .eq sup, .eq sub { font-size: 0.68em; line-height: 0; }
+  .c-k3 { color: var(--k3); font-weight: 600; } .c-k1 { color: var(--k1); font-weight: 600; } .c-hi { color: var(--hi); font-weight: 600; }
+  footer { border-top: 1px solid var(--rule); margin-top: 2rem; padding: 2rem 0 3rem; font-family: var(--sans); font-size: 0.9rem; color: var(--muted); }
+
+  @media (max-width: 52rem) {
+    .stage { grid-template-columns: 1fr; }
+    .side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.25rem; align-items: start; }
+    table { margin-top: 0; }
+    .cols { grid-template-columns: 1fr; }
+    .seg { margin-left: 0; }
+  }
+  @media (max-width: 30rem) {
+    .side { grid-template-columns: 1fr; }
+    .steps button .ko { display: none; }
+  }
+</style>
+<script>try { const t = localStorage.getItem("netsci-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<style>
+button.theme-btn{position:fixed; z-index:20; top:calc(env(safe-area-inset-top, 0px) + 12px); right:calc(env(safe-area-inset-right, 0px) + 12px);
+  width:40px; height:40px; padding:0; border-radius:50%; display:grid; place-items:center; cursor:pointer;
+  background:var(--paper); color:var(--ink); border:1px solid var(--rule); box-shadow:0 1px 4px rgba(0,0,0,.12)}
+button.theme-btn:hover{border-color:var(--ink)}
+button.theme-btn:focus-visible{outline:3px solid var(--node); outline-offset:2px}
+button.theme-btn svg{width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round}
+</style>
+</head>
+<body>
+<button id="themeBtn" class="theme-btn" type="button" aria-label="Switch to light mode"></button>
+<div class="wrap">
+  <a class="back" href="https://lshlj82.github.io/netsci-course-GNU/">← Network Science: interactive demos <span lang="ko">· 네트워크 과학 교과목 보조자료</span></a>
+
+  <header class="hero">
+    <h1>Cutting a tree into stubs<span class="ko" lang="ko">트리를 미연결 링크로 쪼개어 다시 잇기</span></h1>
+    <p>Take the tree on the left of the slide, cut every link in half, throw the 378 half-links into a bag, and pair them again at random. Every node keeps its stubs, so the degree distribution cannot change, yet what comes out looks nothing like a tree.</p>
+    <p class="ko" lang="ko">슬라이드 왼쪽의 트리에서 모든 링크를 반으로 자르고, 그렇게 생긴 미연결 링크 378개를 한데 모은 뒤 무작위로 다시 짝지어 봅시다. 노드마다 자기 미연결 링크를 그대로 가지고 있으므로 연결선수 분포는 바뀔 수 없지만, 결과는 전혀 트리처럼 보이지 않습니다.</p>
+    <p class="credit">Created by Claude Opus 5.5, based on the slide for Prof. Laurent Hébert-Dufresne’s talk at KIAS on 29 September 2022.<span lang="ko">2022년 9월 29일 고등과학원(KIAS)에서 열린 Laurent Hébert-Dufresne 교수의 강연 슬라이드를 바탕으로 Claude Opus 5.5가 만들었습니다.</span></p>
+  </header>
+
+  <main>
+    <figure style="margin:0">
+      <div class="stage">
+        <canvas id="net" role="img" aria-label="Animated network: a tree is cut into stubs, the stubs are sorted, randomly paired, and the new network relaxes into shape"></canvas>
+        <div class="side">
+          <div>
+            <h3>Degree distribution</h3><span class="ko" lang="ko">연결선수 분포</span>
+            <canvas id="deg" role="img" aria-label="Bars: fraction of nodes with k stubs. Dots: fraction of nodes with k links attached right now."></canvas>
+          </div>
+          <table aria-live="off">
+            <thead><tr><th></th><th>tree</th><th>now</th></tr></thead>
+            <tbody>
+              <tr><td>links<span class="ko" lang="ko">링크</span></td><td>189</td><td class="now" id="sM">189</td></tr>
+              <tr><td>components<span class="ko" lang="ko">연결 덩어리</span></td><td>1</td><td class="now" id="sC">1</td></tr>
+              <tr><td>independent loops<span class="ko" lang="ko">독립 고리 <i>m</i>−<i>n</i>+<i>c</i></span></td><td>0</td><td class="now" id="sL">0</td></tr>
+              <tr><td>largest component<span class="ko" lang="ko">가장 큰 덩어리</span></td><td>190</td><td class="now" id="sG">190</td></tr>
+              <tr><td>isolated pairs<span class="ko" lang="ko">고립된 노드 쌍</span></td><td>0</td><td class="now" id="sD">0</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <ol class="steps" id="steps">
+        <li><button type="button" data-p="0"><span class="n">1</span>Tree <span class="ko" lang="ko">트리</span></button></li>
+        <li><button type="button" data-p="1"><span class="n">2</span>Cut <span class="ko" lang="ko">자르기</span></button></li>
+        <li><button type="button" data-p="2"><span class="n">3</span>Sort stubs <span class="ko" lang="ko">모으기</span></button></li>
+        <li><button type="button" data-p="3"><span class="n">4</span>Rewire <span class="ko" lang="ko">다시 잇기</span></button></li>
+        <li><button type="button" data-p="4"><span class="n">5</span>Relax <span class="ko" lang="ko">펼치기</span></button></li>
+      </ol>
+      <p class="caption" id="caption" aria-live="polite"></p>
+
+      <div class="controls">
+        <button id="play" class="primary" type="button">Pause</button>
+        <button id="next" type="button">Next step ›</button>
+        <button id="again" type="button">Replay</button>
+        <button id="rewire" type="button">New wiring</button>
+        <div class="seg" role="group" aria-label="Node color">
+          <span>Color by</span>
+          <button type="button" data-c="deg" aria-pressed="true">degree</button>
+          <button type="button" data-c="gen" aria-pressed="false">generation</button>
+        </div>
+      </div>
+    </figure>
+
+    <section class="part" aria-labelledby="h-read">
+      <h2 id="h-read">What the slide shows <span class="ko" lang="ko">슬라이드에 그려진 것</span></h2>
+      <figure class="slide">
+        <img src="slide.jpg" width="1800" height="922" loading="lazy" decoding="async"
+             alt="Photo of the lecture slide. Left: a Cayley tree coloured by generation, red at the centre through yellow and green to navy leaves. Right: a tangled network of orange and navy nodes with loops, a few small stars and many isolated pairs. Caption on the slide: Description: degree distribution.">
+        <figcaption>The slide from Prof. Laurent Hébert-Dufresne’s talk at KIAS, 29 September 2022. <span lang="ko">2022년 9월 29일 고등과학원(KIAS)에서 열린 Laurent Hébert-Dufresne 교수의 강연 슬라이드.</span></figcaption>
+      </figure>
+      <div class="cols">
+        <div>
+          <p>The tree on the left of the slide is a Cayley tree. The central node has three neighbours, every other internal node has one parent and two children, and the branching stops after six generations. Counting outward, that gives</p>
+          <p class="eq"><i>n</i> = 1 + 3 + 6 + 12 + 24 + 48 + 96 = 190, &nbsp; <i>m</i> = <i>n</i> − 1 = 189,</p>
+          <p>with <span class="c-k3">94 nodes of degree 3</span> and <span class="c-k1">96 leaves of degree 1</span>. In the slide the tree is coloured by generation (red, yellow, pale yellow, yellow, green, navy); use <em>Color by generation</em> to see that version.</p>
+        </div>
+        <div>
+          <p>The network on the right of the slide has only two node colours: <span class="c-k3">orange</span> for degree 3 and <span class="c-k1">navy</span> for degree 1. It is the same 190 nodes with the same degrees, joined by the configuration model: a large tangled component full of loops, a few small stars, and a scatter of isolated pairs at the top, which are two leaves whose stubs happened to be paired with each other.</p>
+          <p class="ko" lang="ko">슬라이드 왼쪽은 케일리 트리입니다. 중심 노드에 이웃이 셋, 나머지 내부 노드는 부모 하나에 자식 둘을 가지며 여섯 세대에서 멈춥니다. 노드 190개, 링크 189개이고, 연결선수 3인 노드 94개와 연결선수 1인 잎 96개로 이루어집니다. 오른쪽은 같은 연결선수열을 구성 모형으로 이은 네트워크로, 주황색은 연결선수 3, 남색은 연결선수 1입니다.</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="part" aria-labelledby="h-why">
+      <h2 id="h-why">What to notice <span class="ko" lang="ko">눈여겨볼 점</span></h2>
+      <div class="cols">
+        <div>
+          <p><b>The degree distribution is a property of the stubs, not of the wiring.</b> In the panel at the top right, the bars count stubs per node and never move. The dots count the links attached to each node right now: they fall to <i>k</i> = 0 when the tree is cut and climb back onto the bars as the stubs are rewired. Both networks have <i>p</i><sub>1</sub> = 96/190 and <i>p</i><sub>3</sub> = 94/190.</p>
+          <p><b>Everything else changes.</b> A tree has exactly one component and no loops. After rewiring, the count of independent loops <i>m</i> − <i>n</i> + <i>c</i> is typically above ten, because the stubs no longer know which branch they came from.</p>
+          <p><b>Isolated pairs are expected.</b> A random pairing of the 2<i>m</i> = 378 stubs joins two particular stubs with probability 1/377, so the expected number of leaf–leaf pairs is</p>
+          <p class="eq">⟨# pairs⟩ = <span style="font-size:1.1em">(</span>96 choose 2<span style="font-size:1.1em">)</span> / 377 = 4560 / 377 ≈ 12,</p>
+          <p>about what the slide shows above its main component.</p>
+        </div>
+        <div>
+          <p><b>A giant component still forms.</b> Following a random link to a node of degree <i>k</i> happens with probability <i>k p<sub>k</sub></i>/⟨<i>k</i>⟩, and that node offers <i>k</i> − 1 new links. The Molloy–Reed criterion asks whether this branching is above one:</p>
+          <p class="eq">⟨<i>k</i><sup>2</sup>⟩ − 2⟨<i>k</i>⟩ = 4.96 − 3.98 = 0.98 &gt; 0.</p>
+          <p>Solving <i>u</i> = <i>q</i><sub>0</sub> + <i>q</i><sub>2</sub><i>u</i><sup>2</sup> with excess-degree probabilities <i>q</i><sub>0</sub> = 96/378 and <i>q</i><sub>2</sub> = 282/378 gives <i>u</i> ≈ 0.34, and the giant component holds a fraction <i>S</i> = 1 − <i>p</i><sub>1</sub><i>u</i> − <i>p</i><sub>3</sub><i>u</i><sup>3</sup> ≈ 0.81 of the nodes, about 154 of 190. Press <em>New wiring</em> a few times and compare with the “largest component” row.</p>
+          <p class="ko" lang="ko">연결선수 분포는 링크를 어떻게 잇느냐가 아니라 각 노드가 가진 미연결 링크 수로 정해집니다. 반면 트리에는 고리가 없지만, 다시 이은 네트워크에는 고리가 여럿 생기고, 잎끼리 짝지어진 고립된 쌍이 평균 12개쯤 나타나며, 몰로이–리드 조건 ⟨<i>k</i><sup>2</sup>⟩ − 2⟨<i>k</i>⟩ &gt; 0을 만족하므로 노드의 약 81%가 거대 연결 덩어리에 속합니다.</p>
+        </div>
+      </div>
+      <p style="font-family:var(--sans);font-size:0.9rem;color:var(--muted)">The pairing in step 4 is a uniformly random matching of all stubs. Matchings that would create a self-loop or a double link are thrown away and drawn again, so the result is a simple graph, like the one on the slide. <span lang="ko">4단계의 짝짓기는 모든 미연결 링크의 균일한 무작위 짝짓기입니다. 자기 고리나 중복 링크가 생기는 짝짓기는 버리고 다시 뽑으므로 결과는 슬라이드처럼 단순 그래프입니다.</span></p>
+    </section>
+  </main>
+
+  <footer>
+    Created by Claude Opus 5.5, based on the slide for Prof. Laurent Hébert-Dufresne’s talk at KIAS on 29 September 2022. Part of the <a href="https://lshlj82.github.io/netsci-course-GNU/">interactive demos</a> for <i>Network Science</i> at Gyeongsang National University; see also demo 9, <a href="https://lshlj82.github.io/network-models/">Network models</a>. Source on <a href="https://github.com/lshlj82/stub-rewiring">GitHub</a>.<br>
+    <span lang="ko">2022년 9월 29일 고등과학원(KIAS)에서 열린 Laurent Hébert-Dufresne 교수의 강연 슬라이드를 바탕으로 Claude Opus 5.5가 만들었습니다. 경상국립대학교 네트워크 과학 교과목 보조자료의 일부이며, 데모 9 「네트워크 모형」과 함께 보세요.</span>
+  </footer>
+</div>
+
+<script>
+(() => {
+  // ---------------- the Cayley tree read off the slide ----------------
+  const GEN = 6;
+  const parent = [-1], depth = [0], kids = [[]];
+  for (let v = 0; v < parent.length; v++) {
+    if (depth[v] === GEN) continue;
+    const nc = v === 0 ? 3 : 2;
+    for (let j = 0; j < nc; j++) { const u = parent.length; parent.push(v); depth.push(depth[v] + 1); kids.push([]); kids[v].push(u); }
+  }
+  const N = parent.length;                                   // 190
+  const deg = depth.map((d, v) => (v === 0 || d < GEN) ? 3 : 1);
+  const M = N - 1;                                           // 189
+  // stubs: link i = (parent[c], c) gives stub 2i at the parent and stub 2i+1 at the child
+  const S = 2 * M, sNode = new Int32Array(S), treeP = new Int32Array(S), nodeStubs = Array.from({ length: N }, () => []);
+  let li = 0;
+  for (let c = 1; c < N; c++) {
+    const a = 2 * li, b = a + 1; sNode[a] = parent[c]; sNode[b] = c; treeP[a] = b; treeP[b] = a;
+    nodeStubs[parent[c]].push(a); nodeStubs[c].push(b); li++;
+  }
+
+  // ---------------- layouts (world box 1.5 x 1) ----------------
+  const WX = 1.5, WY = 1;
+  const treeX = new Float64Array(N), treeY = new Float64Array(N);
+  (function () {
+    const leafPos = new Float64Array(N); let L = 0;
+    (function dfs(v) { if (!kids[v].length) { leafPos[v] = L++; return; } kids[v].forEach(dfs); leafPos[v] = kids[v].reduce((s, u) => s + leafPos[u], 0) / kids[v].length; })(0);
+    const rx = 0.66, ry = 0.47, off = -Math.PI * 0.62;
+    for (let v = 0; v < N; v++) {
+      const a = off + 2 * Math.PI * (leafPos[v] + 0.5) / L, r = Math.pow(depth[v] / GEN, 0.92);
+      treeX[v] = WX / 2 + rx * r * Math.cos(a); treeY[v] = WY / 2 + ry * r * Math.sin(a);
+    }
+    treeX[0] = WX / 2; treeY[0] = WY / 2;
+  })();
+
+  const invX = new Float64Array(N), invY = new Float64Array(N), delay = new Float64Array(N);
+  const blocks = [];
+  function makeInventory() {
+    const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; } return a; };
+    const three = shuffle([...Array(N).keys()].filter(v => deg[v] === 3)), one = shuffle([...Array(N).keys()].filter(v => deg[v] === 1));
+    const rows = 8, cols = 12, cy = 0.56;
+    const put = (list, x0, sp) => list.forEach((v, i) => { const r = (i / cols) | 0, c = i % cols; invX[v] = x0 + c * sp; invY[v] = cy - (rows - 1) * sp / 2 + r * sp; });
+    const sp3 = 0.064, sp1 = 0.044, w3 = (cols - 1) * sp3, w1 = (cols - 1) * sp1, gap = 0.13, x3 = (WX - w3 - w1 - gap) / 2;
+    put(three, x3, sp3); put(one, x3 + w3 + gap, sp1);
+    blocks.length = 0;
+    blocks.push({ x: x3 + w3 / 2, y: cy - (rows - 1) * sp3 / 2 - 0.075, t: `k = 3 · ${three.length} nodes · ${3 * three.length} stubs`, k: 3 });
+    blocks.push({ x: x3 + w3 + gap + w1 / 2, y: cy - (rows - 1) * sp3 / 2 - 0.075, t: `k = 1 · ${one.length} nodes · ${one.length} stubs`, k: 1 });
+    for (let v = 0; v < N; v++) delay[v] = Math.random() * 0.42;
+  }
+
+  // canonical stub angles in the inventory: a "Y" for k = 3, straight up for k = 1
+  const canon = new Float64Array(S), treeAng = new Float64Array(S);
+  for (let v = 0; v < N; v++) nodeStubs[v].forEach((s, j) => { canon[s] = deg[v] === 1 ? -Math.PI / 2 : -Math.PI / 2 + j * 2 * Math.PI / 3; });
+  for (let s = 0; s < S; s++) { const a = sNode[s], b = sNode[treeP[s]]; treeAng[s] = Math.atan2(treeY[b] - treeY[a], treeX[b] - treeX[a]); }
+
+  // ---------------- configuration-model pairing ----------------
+  let cfgP = new Int32Array(S), order = [];   // order: list of pairs in the order they are joined
+  function newMatching() {
+    const st = [...Array(S).keys()];
+    for (let tries = 0; tries < 5000; tries++) {
+      for (let i = S - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [st[i], st[j]] = [st[j], st[i]]; }
+      const seen = new Set(); let ok = true;
+      for (let i = 0; i < S && ok; i += 2) {
+        const u = sNode[st[i]], v = sNode[st[i + 1]];
+        if (u === v) { ok = false; break; }
+        const key = u < v ? u * N + v : v * N + u; if (seen.has(key)) ok = false; seen.add(key);
+      }
+      if (ok) break;
+    }
+    order = [];
+    for (let i = 0; i < S; i += 2) { cfgP[st[i]] = st[i + 1]; cfgP[st[i + 1]] = st[i]; order.push([st[i], st[i + 1]]); }
+  }
+
+  // ---------------- live state ----------------
+  const X = new Float64Array(N), Y = new Float64Array(N);
+  const partner = new Int32Array(S), joinT = new Float64Array(S), freeA = new Float64Array(S), startT = new Float64Array(S);
+  const DUR = [1.8, 1.7, 2.6, 7.5, 7.5], JOIN = 0.38;
+  let phase = 0, t = 0, done = false, hold = 0;
+  let relaxX = null, relaxY = null;
+
+  function setTree() { X.set(treeX); Y.set(treeY); for (let s = 0; s < S; s++) { partner[s] = treeP[s]; joinT[s] = 1; freeA[s] = treeAng[s]; } }
+  function setCut() { X.set(treeX); Y.set(treeY); for (let s = 0; s < S; s++) { partner[s] = -1; joinT[s] = 0; freeA[s] = treeAng[s]; } }
+  function setSorted() { X.set(invX); Y.set(invY); for (let s = 0; s < S; s++) { partner[s] = -1; joinT[s] = 0; freeA[s] = canon[s]; } }
+  function setRewired() { X.set(invX); Y.set(invY); for (let s = 0; s < S; s++) { partner[s] = cfgP[s]; joinT[s] = 1; freeA[s] = canon[s]; startT[s] = -9; } }
+  function setRelaxed() {
+    setRewired();
+    if (!relaxX) { for (let i = 0; i < 700; i++) fr(Math.max(0.002, 0.05 * Math.pow(1 - i / 700, 1.5))); relaxX = X.slice(); relaxY = Y.slice(); }
+    X.set(relaxX); Y.set(relaxY);
+  }
+  const endState = [setTree, setCut, setSorted, setRewired, setRelaxed];
+
+  function startPhase(p) {
+    phase = p; t = 0; done = false; hold = 0;
+    if (p === 0) setTree(); else endState[p - 1]();
+    if (p === 1) for (let s = 0; s < S; s++) partner[s] = treeP[s], joinT[s] = 1;
+    if (p === 3) {
+      const step = (DUR[3] - JOIN - 0.3) / order.length;
+      order.forEach(([a, b], j) => { partner[a] = b; partner[b] = a; startT[a] = startT[b] = j * step; });
+    }
+    if (reduce) finishPhase();
+    syncUI();
+  }
+  function finishPhase() { endState[phase](); t = DUR[phase]; done = true; syncUI(); }
+
+  // ---------------- force layout (Fruchterman–Reingold) ----------------
+  const kFR = 0.8 * Math.sqrt(WX * WY / N), dx = new Float64Array(N), dy = new Float64Array(N);
+  function fr(temp) {
+    dx.fill(0); dy.fill(0);
+    for (let i = 0; i < N; i++) for (let j = i + 1; j < N; j++) {
+      let ex = X[i] - X[j], ey = Y[i] - Y[j], d2 = ex * ex + ey * ey;
+      if (d2 < 1e-8) { ex = 1e-4 * (Math.random() - .5); ey = 1e-4; d2 = 1e-8; }
+      const f = kFR * kFR / d2; dx[i] += ex * f; dy[i] += ey * f; dx[j] -= ex * f; dy[j] -= ey * f;
+    }
+    for (let s = 0; s < S; s += 1) {
+      const p = cfgP[s]; if (p < s) continue;
+      const a = sNode[s], b = sNode[p], ex = X[b] - X[a], ey = Y[b] - Y[a], d = Math.hypot(ex, ey) || 1e-4, f = d / kFR;
+      dx[a] += ex * f; dy[a] += ey * f; dx[b] -= ex * f; dy[b] -= ey * f;
+    }
+    for (let i = 0; i < N; i++) {
+      dx[i] += (WX / 2 - X[i]) * 0.9; dy[i] += (WY / 2 - Y[i]) * 0.9 * 1.4;
+      const d = Math.hypot(dx[i], dy[i]) || 1, m = Math.min(d, temp) / d;
+      X[i] += dx[i] * m; Y[i] += dy[i] * m;
+    }
+  }
+
+  // ---------------- per-frame update ----------------
+  const ease = u => u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u);
+  const angDiff = (a, b) => { let d = b - a; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; };
+  function update() {
+    const u = Math.min(1, t / DUR[phase]);
+    if (phase === 1) {
+      const e = ease(u * 1.15); for (let s = 0; s < S; s++) joinT[s] = 1 - e;
+      if (u >= 1) for (let s = 0; s < S; s++) partner[s] = -1;
+    } else if (phase === 2) {
+      for (let v = 0; v < N; v++) {
+        const e = ease((u - delay[v]) / 0.56);
+        X[v] = treeX[v] + (invX[v] - treeX[v]) * e; Y[v] = treeY[v] + (invY[v] - treeY[v]) * e;
+        for (const s of nodeStubs[v]) freeA[s] = treeAng[s] + angDiff(treeAng[s], canon[s]) * e;
+      }
+    } else if (phase === 3) {
+      for (let s = 0; s < S; s++) joinT[s] = ease((t - startT[s]) / JOIN);
+    } else if (phase === 4) {
+      const temp = Math.max(0.0015, 0.045 * Math.pow(1 - u, 1.6));
+      fr(temp); fr(temp);
+      if (u >= 1) { relaxX = X.slice(); relaxY = Y.slice(); }
+    }
+  }
+
+  // ---------------- drawing ----------------
+  const net = document.getElementById('net'), ctx = net.getContext('2d');
+  const degc = document.getElementById('deg'), dctx = degc.getContext('2d');
+  let W = 0, H = 0, DW = 0, DH = 0, C = {}, colorMode = 'deg';
+  const cam = { x: WX / 2, y: WY / 2, s: 1, ready: false };
+  function readColors() {
+    const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
+    C = { ink: g('--ink'), muted: g('--muted'), rule: g('--rule'), edge: g('--edge'), hi: g('--hi'), k3: g('--k3'), k1: g('--k1'),
+          g0: g('--g0'), g2: g('--g2'), g3: g('--g3'), g5: g('--g5'), stroke: g('--stroke'), paper: g('--paper'), accent: g('--accent') };
+  }
+  const genCol = d => [C.g0, C.g0, C.g2, C.g3, C.g2, C.g5, C.k1][d];
+  const nodeCol = v => colorMode === 'gen' ? genCol(depth[v]) : (deg[v] === 3 ? C.k3 : C.k1);
+
+  function resize() {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = net.clientWidth; H = net.clientHeight; net.width = W * dpr; net.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    DW = degc.clientWidth; DH = degc.clientHeight; degc.width = DW * dpr; degc.height = DH * dpr; dctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    cam.ready = false; draw();
+  }
+
+  function camTarget() {
+    if (phase < 4 || (phase === 4 && t === 0 && !done)) return { x: WX / 2, y: WY / 2, s: Math.min(W / (WX + 0.04), H / (WY + 0.04)) };
+    let x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+    for (let v = 0; v < N; v++) { x0 = Math.min(x0, X[v]); x1 = Math.max(x1, X[v]); y0 = Math.min(y0, Y[v]); y1 = Math.max(y1, Y[v]); }
+    const pad = 0.06;
+    return { x: (x0 + x1) / 2, y: (y0 + y1) / 2, s: Math.min(W / (x1 - x0 + 2 * pad), H / (y1 - y0 + 2 * pad)) };
+  }
+
+  function draw() {
+    if (!W || !C.ink) return;
+    const tg = camTarget();
+    if (!cam.ready || reduce || !running) { Object.assign(cam, tg); cam.ready = true; }
+    else { cam.x += (tg.x - cam.x) * 0.12; cam.y += (tg.y - cam.y) * 0.12; cam.s += (tg.s - cam.s) * 0.12; }
+    const sx = v => (X[v] - cam.x) * cam.s + W / 2, sy = v => (Y[v] - cam.y) * cam.s + H / 2;
+    const sz = Math.max(0.62, Math.min(1.15, H / 520));
+    const stubLen = 11 * sz, r3 = 4.6 * sz, r1 = 3.4 * sz;
+    ctx.clearRect(0, 0, W, H);
+
+    // inventory labels
+    let labA = 0;
+    if (phase === 2) labA = ease((t / DUR[2] - 0.55) / 0.4); else if (phase === 3) labA = 1 - ease((t / DUR[3] - 0.15) / 0.3);
+    if (labA > 0.01) {
+      ctx.globalAlpha = labA; ctx.font = `${Math.round(13 * sz + 1)}px "Public Sans", system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      for (const b of blocks) { ctx.fillStyle = b.k === 3 ? C.k3 : C.k1; ctx.fillText(b.t, (b.x - cam.x) * cam.s + W / 2, (b.y - cam.y) * cam.s + H / 2); }
+      ctx.fillStyle = C.muted;
+      ctx.fillText(`282 + 96 = 378 stubs  →  189 links`, W / 2, (0.9 - cam.y) * cam.s + H / 2);
+      ctx.globalAlpha = 1;
+    }
+
+    // links and stubs: every stub is a segment from its node; a joined stub reaches the midpoint
+    ctx.lineCap = 'round';
+    const tips = [];
+    for (let s = 0; s < S; s++) {
+      const a = sNode[s], x = sx(a), y = sy(a), p = partner[s], j = p >= 0 ? joinT[s] : 0;
+      let ang = freeA[s], len = stubLen;
+      if (j > 0) {
+        const b = sNode[p], bx = sx(b), by = sy(b), tAng = Math.atan2(by - y, bx - x), half = Math.hypot(bx - x, by - y) / 2;
+        ang = freeA[s] + angDiff(freeA[s], tAng) * j; len = stubLen + (half - stubLen) * j;
+      }
+      const ex = x + Math.cos(ang) * len, ey = y + Math.sin(ang) * len;
+      let col = C.edge, lw = 1.15 * sz;
+      if (phase === 3 && p >= 0) { const age = t - startT[s]; if (age > 0 && age < JOIN + 0.6) { col = C.hi; lw = 1.8 * sz; } }
+      ctx.strokeStyle = col; ctx.lineWidth = lw;
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke();
+      if (j < 0.97) tips.push(ex, ey);
+    }
+    // open ends of dangling stubs
+    ctx.strokeStyle = C.edge; ctx.fillStyle = C.paper; ctx.lineWidth = 1 * sz;
+    for (let i = 0; i < tips.length; i += 2) { ctx.beginPath(); ctx.arc(tips[i], tips[i + 1], 1.9 * sz, 0, 2 * Math.PI); ctx.fill(); ctx.stroke(); }
+    // cut marks
+    if (phase === 1 && t / DUR[1] < 0.45) {
+      ctx.globalAlpha = 1 - t / DUR[1] / 0.45; ctx.strokeStyle = C.hi; ctx.lineWidth = 1.6 * sz;
+      for (let s = 0; s < S; s += 2) {
+        const a = sNode[s], b = sNode[s + 1], mx = (sx(a) + sx(b)) / 2, my = (sy(a) + sy(b)) / 2, q = 3.2 * sz;
+        ctx.beginPath(); ctx.moveTo(mx - q, my - q); ctx.lineTo(mx + q, my + q); ctx.moveTo(mx + q, my - q); ctx.lineTo(mx - q, my + q); ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    // nodes
+    ctx.strokeStyle = C.stroke; ctx.lineWidth = 0.9 * sz;
+    for (let v = 0; v < N; v++) {
+      ctx.fillStyle = nodeCol(v); ctx.beginPath(); ctx.arc(sx(v), sy(v), deg[v] === 3 ? r3 : r1, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+    }
+    drawDeg();
+    stats();
+  }
+
+  function drawDeg() {
+    if (!DW) return;
+    const c = dctx, pad = { l: 34, r: 8, t: 44, b: 30 }, cw = DW - pad.l - pad.r, ch = DH - pad.t - pad.b;
+    c.clearRect(0, 0, DW, DH);
+    const K = 4, ymax = 1.0, bx = k => pad.l + (k + 0.5) * cw / K, by = p => pad.t + ch * (1 - p / ymax);
+    c.font = '11px "Public Sans", system-ui, sans-serif'; c.fillStyle = C.muted; c.strokeStyle = C.rule; c.lineWidth = 1;
+    c.textAlign = 'right'; c.textBaseline = 'middle';
+    for (const p of [0, 0.25, 0.5, 0.75, 1]) { c.beginPath(); c.moveTo(pad.l, by(p)); c.lineTo(pad.l + cw, by(p)); c.stroke(); c.fillText(p.toFixed(p ? 2 : 0), pad.l - 5, by(p)); }
+    c.textAlign = 'center'; c.textBaseline = 'top';
+    for (let k = 0; k < K; k++) c.fillText(k, bx(k), pad.t + ch + 5);
+    c.fillText('k', pad.l + cw / 2, pad.t + ch + 17);
+    // bars: stubs per node (never changes)
+    const bw = cw / K * 0.5;
+    for (const [k, n] of [[1, 96], [3, 94]]) {
+      const p = n / N; c.fillStyle = k === 3 ? C.k3 : C.k1; c.globalAlpha = 0.85;
+      c.fillRect(bx(k) - bw / 2, by(p), bw, by(0) - by(p)); c.globalAlpha = 1;
+    }
+    // dots: links attached right now
+    const cnt = new Array(K).fill(0), att = new Int32Array(N);
+    for (let s = 0; s < S; s++) if (partner[s] >= 0 && joinT[s] > 0.5) att[sNode[s]]++;
+    for (let v = 0; v < N; v++) cnt[Math.min(K - 1, att[v])]++;
+    c.fillStyle = C.ink; c.strokeStyle = C.paper; c.lineWidth = 2;
+    for (let k = 0; k < K; k++) if (cnt[k]) { c.beginPath(); c.arc(bx(k), by(cnt[k] / N), 4.5, 0, 2 * Math.PI); c.fill(); c.stroke(); }
+    // legend
+    c.textAlign = 'left'; c.textBaseline = 'middle'; c.fillStyle = C.muted;
+    c.fillStyle = C.k3; c.fillRect(pad.l, 4, 10, 9); c.fillStyle = C.ink; c.fillText('bars: stubs per node', pad.l + 16, 9);
+    c.beginPath(); c.arc(pad.l + 5, 25, 4, 0, 2 * Math.PI); c.fill(); c.fillText('dots: links attached now', pad.l + 16, 25);
+  }
+
+  const elM = document.getElementById('sM'), elC = document.getElementById('sC'), elL = document.getElementById('sL'), elG = document.getElementById('sG'), elD = document.getElementById('sD');
+  const uf = new Int32Array(N), sizeA = new Int32Array(N);
+  function stats() {
+    for (let v = 0; v < N; v++) uf[v] = v;
+    const find = v => { while (uf[v] !== v) { uf[v] = uf[uf[v]]; v = uf[v]; } return v; };
+    let m = 0;
+    for (let s = 0; s < S; s++) { const p = partner[s]; if (p > s && joinT[s] > 0.5) { m++; const a = find(sNode[s]), b = find(sNode[p]); if (a !== b) uf[a] = b; } }
+    sizeA.fill(0); for (let v = 0; v < N; v++) sizeA[find(v)]++;
+    let c = 0, g = 0, d = 0;
+    for (let v = 0; v < N; v++) if (sizeA[v]) { c++; g = Math.max(g, sizeA[v]); if (sizeA[v] === 2) d++; }
+    elM.textContent = m; elC.textContent = c; elL.textContent = m - N + c; elG.textContent = g; elD.textContent = d;
+  }
+
+  // ---------------- UI ----------------
+  const CAP = [
+    ['The tree from the slide: 190 nodes in six generations around a central hub. 94 internal nodes have degree 3 and 96 leaves have degree 1.',
+     '슬라이드의 트리: 중심에서 여섯 세대로 뻗은 노드 190개. 내부 노드 94개는 연결선수 3, 잎 96개는 연결선수 1입니다.'],
+    ['Every link is cut at its midpoint. Each of the 189 links leaves two stubs behind, one on each end, so each node keeps exactly as many stubs as it had links.',
+     '모든 링크를 한가운데에서 자릅니다. 링크 189개가 각각 양 끝에 미연결 링크 하나씩을 남기므로, 노드는 원래 링크 수만큼의 미연결 링크를 그대로 갖습니다.'],
+    ['Forget where each node was. Sorted by degree, the parts list is all that is left: 94 nodes with three stubs, 96 with one, 378 stubs in total.',
+     '노드가 어디에 있었는지는 잊습니다. 연결선수별로 늘어놓으면 남은 것은 부품 목록뿐입니다. 미연결 링크 셋인 노드 94개, 하나인 노드 96개, 모두 378개.'],
+    ['Pick two stubs at random and join them into a link; repeat until none are left. The highlighted links are the ones just formed.',
+     '미연결 링크 두 개를 무작위로 골라 링크로 잇고, 남은 것이 없을 때까지 되풀이합니다. 강조된 링크는 방금 이어진 것입니다.'],
+    ['Let the new network find its own shape. Same nodes, same degrees, same degree distribution, but now there are loops, isolated pairs and small stars around a giant component.',
+     '새 네트워크가 제 모양을 찾도록 펼칩니다. 노드도, 연결선수도, 연결선수 분포도 같지만, 이제 거대 연결 덩어리 주위에 고리와 고립된 쌍, 작은 별 모양 덩어리가 생겼습니다.'],
+  ];
+  const cap = document.getElementById('caption'), stepBtns = [...document.querySelectorAll('#steps button')];
+  const playBtn = document.getElementById('play');
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let running = !reduce;
+  function syncUI() {
+    cap.innerHTML = `${CAP[phase][0]}<span class="ko" lang="ko">${CAP[phase][1]}</span>`;
+    stepBtns.forEach((b, i) => { b.toggleAttribute('aria-current', i === phase); if (i === phase) b.setAttribute('aria-current', 'step'); b.classList.toggle('done', i < phase || (i === phase && done)); });
+    const finished = phase === 4 && done;
+    playBtn.textContent = finished ? 'Play again' : running ? 'Pause' : 'Play';
+  }
+  playBtn.addEventListener('click', () => {
+    if (phase === 4 && done) { running = !reduce; startPhase(0); if (reduce) running = false; }
+    else running = !running;
+    syncUI(); draw();
+  });
+  document.getElementById('next').addEventListener('click', () => {
+    if (!done) finishPhase(); else if (phase < 4) startPhase(phase + 1);
+    draw();
+  });
+  document.getElementById('again').addEventListener('click', () => { running = !reduce; startPhase(0); draw(); });
+  document.getElementById('rewire').addEventListener('click', () => { newMatching(); relaxX = null; running = !reduce; startPhase(3); draw(); });
+  stepBtns.forEach(b => b.addEventListener('click', () => { startPhase(+b.dataset.p); draw(); }));
+  document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => {
+    colorMode = b.dataset.c; document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', x === b)); draw();
+  }));
+
+  let last = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (running) {
+      if (!done) { t = Math.min(DUR[phase], t + dt); update(); if (t >= DUR[phase]) { done = true; syncUI(); } }
+      else if (phase < 4) { hold += dt; if (hold > 0.9) startPhase(phase + 1); }
+      else { running = false; syncUI(); }
+    }
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { readColors(); draw(); });
+  new MutationObserver(() => { readColors(); draw(); }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  readColors(); makeInventory(); newMatching();
+  startPhase(0);
+  new ResizeObserver(resize).observe(document.querySelector('.stage'));
+  (document.fonts ? document.fonts.ready : Promise.resolve()).then(draw);
+  requestAnimationFrame(frame);
+})();
+</script>
+<script>
+(() => {
+  // light/dark switch; the choice is remembered across all of the course demos
+  const btn = document.getElementById("themeBtn"), root = document.documentElement, mq = matchMedia("(prefers-color-scheme: dark)");
+  const SUN = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8"/></svg>';
+  const MOON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z"/></svg>';
+  const current = () => root.dataset.theme || (mq.matches ? "dark" : "light");
+  const sync = () => { const dark = current() === "dark", label = dark ? "Switch to light mode" : "Switch to dark mode";
+    btn.innerHTML = dark ? SUN : MOON; btn.setAttribute("aria-label", label); btn.title = label; };
+  btn.addEventListener("click", () => { const next = current() === "dark" ? "light" : "dark"; root.dataset.theme = next;
+    try { localStorage.setItem("netsci-theme", next); } catch (e) {} sync(); });
+  mq.addEventListener("change", sync);
+  sync();
+})();
+</script>
+</body>
+</html>
