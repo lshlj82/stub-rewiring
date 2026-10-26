@@ -5,8 +5,8 @@ An interactive demo of the configuration model, part of the [interactive demos](
 
 **Live page:** https://lshlj82.github.io/stub-rewiring/
 
-Created by Claude Opus 5.5, based on the slide for Prof. Laurent Hébert-Dufresne’s talk at KIAS on September 29, 2022.
-2022년 9월 29일 고등과학원(KIAS)에서 열린 Laurent Hébert-Dufresne 교수님의 강연 슬라이드를 바탕으로 Claude Opus 5.5가 만들었습니다.
+Created by Claude Opus 5.5, based on the slide for Prof. Laurent Hébert-Dufresne’s talk at KIAS on September 29, 2022, during the KIAS-KU International Workshop: Theoretical Challenges in Network Science (September 26–30, 2022).
+2022년 9월 26–30일 고등과학원(KIAS)에서 열린 KIAS-KU International Workshop: Theoretical Challenges in Network Science 중 9월 29일 Laurent Hébert-Dufresne 교수님의 강연 슬라이드를 바탕으로 Claude Opus 5.5가 만들었습니다.
 
 ## What it shows · 내용
 
